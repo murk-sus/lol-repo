@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Открой меня</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:#000;overflow:hidden;color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    user-select:none;-webkit-user-select:none;touch-action:none}
+  .screen{position:fixed;inset:0;display:none}
+  .screen.on{display:flex}
+
+  /* start */
+  #start{flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center;padding:24px}
+  #start .gift{font-size:72px;animation:bob 1.6s ease-in-out infinite}
+  #start h1{font-size:22px;font-weight:600}
+  #start p{color:#8a8a8a;font-size:15px}
+  #go{margin-top:8px;background:#fff;color:#000;border:0;border-radius:14px;
+    padding:16px 34px;font-size:17px;font-weight:600;cursor:pointer}
+  @keyframes bob{50%{transform:translateY(-10px) rotate(-4deg)}}
+
+  /* logs */
+  #logs{flex-direction:column;background:#000;
+    font-family:"SF Mono",Menlo,Consolas,"Courier New",monospace}
+  #term{flex:1;overflow:hidden;padding:10px 10px 0;font-size:11px;line-height:1.25;
+    color:#ff1f1f;white-space:pre;text-shadow:0 0 6px rgba(255,0,0,.7)}
+  #term .b{color:#fff;text-shadow:0 0 8px #f00}
+  #term .d{color:#8b0000}
+  #bar{padding:10px;border-top:1px solid #400;color:#f22;font-size:13px;
+    font-family:inherit;text-shadow:0 0 6px #f00}
+  #bar .track{height:8px;background:#200;margin-top:6px}
+  #bar .fill{height:100%;width:0;background:#f00;box-shadow:0 0 12px #f00}
+  .shake{animation:shake .08s infinite}
+  @keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(2px,-1px)}
+    50%{transform:translate(-2px,1px)}75%{transform:translate(1px,2px)}}
+  .flick{animation:flick .12s infinite}
+  @keyframes flick{50%{opacity:.75}}
+
+  /* siren */
+  #siren{flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    animation:police .25s steps(1) infinite}
+  #siren .warn{font-size:90px;line-height:1}
+  #siren h2{font-size:34px;font-weight:900;letter-spacing:2px;margin-top:10px}
+  #siren p{font-size:16px;margin-top:8px;font-weight:700}
+  @keyframes police{0%{background:#f00;color:#fff}50%{background:#00f;color:#fff}}
+
+  /* respring */
+  #respring{align-items:center;justify-content:center;background:#000}
+  .spinner{width:34px;height:34px;position:relative;opacity:0;transition:opacity .25s;
+    animation:spin .9s steps(12) infinite}
+  .spinner.show{opacity:1}
+  .spinner i{position:absolute;left:15px;top:0;width:3.5px;height:10px;border-radius:2px;
+    background:#fff;transform-origin:1.75px 17px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* end */
+  #end{flex-direction:column;align-items:center;justify-content:center;gap:16px;
+    text-align:center;padding:24px;opacity:0;transition:opacity .8s}
+  #end.fade{opacity:1}
+  #end .big{font-size:80px}
+  #end h1{font-size:30px;font-weight:800}
+  #end p{color:#9a9a9a;font-size:15px}
+  #again{margin-top:10px;background:#1c1c1e;color:#fff;border:1px solid #333;
+    border-radius:12px;padding:12px 24px;font-size:15px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="start" class="screen on">
+  <div class="gift">🎁</div>
+  <h1>Тебе тут кое-что прислали</h1>
+  <p>Нажми, чтобы открыть</p>
+  <button id="go">Открыть</button>
+</div>
+
+<div id="logs" class="screen">
+  <div id="term"></div>
+  <div id="bar"><span id="bartext">INITIALIZING…</span><div class="track"><div class="fill" id="fill"></div></div></div>
+</div>
+
+<div id="siren" class="screen">
+  <div class="warn">⚠️</div>
+  <h2>SYSTEM FAILURE</h2>
+  <p>CRITICAL ERROR 0xDEAD</p>
+</div>
+
+<div id="respring" class="screen">
+  <div class="spinner" id="spin"></div>
+</div>
+
+<div id="end" class="screen">
+  <div class="big">😜</div>
+  <h1>Пранк!</h1>
+  <p>С телефоном всё в порядке. Это был просто сайт.</p>
+  <button id="again">Ещё раз</button>
+</div>
+
+<script>
+(() => {
+  // ---------- timings (seconds) ----------
+  const LOG_TIME = 9;      // fast red logs
+  const SIREN_TIME = 6;    // loud siren
+  const SPIN_TIME = 3.2;   // fake respring spinner
+
+  const $ = id => document.getElementById(id);
+  const show = id => {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+    $(id).classList.add('on');
+  };
+
+  // spinner bars
+  const spin = $('spin');
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement('i');
+    b.style.transform = `rotate(${i * 30}deg)`;
+    b.style.opacity = (0.25 + 0.75 * ((12 - i) / 12)).toFixed(2);
+    spin.appendChild(b);
+  }
+
+  // ---------- build one WAV: ticking during logs, then siren ----------
+  // Played through an <audio> element so it starts in the tap
+  // and also plays when an iPhone's silent switch is on.
+  function buildWav() {
+    const sr = 22050;
+    const total = Math.floor(sr * (LOG_TIME + SIREN_TIME));
+    const logN = Math.floor(sr * LOG_TIME);
+    const buf = new ArrayBuffer(44 + total * 2);
+    const v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + total * 2, true); w(8, 'WAVE');
+    w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, total * 2, true);
+
+    let ph1 = 0, ph2 = 0;
+    for (let n = 0; n < total; n++) {
+      let s = 0;
+      if (n < logN) {
+        // quiet data-stream ticks that speed up
+        const t = n / sr;
+        const rate = 18 + t * 6;
+        const pos = (t * rate) % 1;
+        if (pos < 0.08) s = (Math.random() * 2 - 1) * 0.18 * (1 - pos / 0.08);
+      } else {
+        const t = (n - logN) / sr;
+        // wail siren: sweep 650–1600 Hz, ~1.4 sweeps/s
+        const f = 1125 + 475 * Math.sin(2 * Math.PI * 1.4 * t);
+        ph1 += f / sr; ph2 += (f * 1.5) / sr;
+        const sq = (ph1 % 1) < 0.5 ? 1 : -1;
+        const saw = 2 * (ph2 % 1) - 1;
+        s = (sq * 0.8 + saw * 0.6) * 1.6;           // overdrive
+        s = Math.max(-1, Math.min(1, s));           // hard clip = max loudness
+        if (t < 0.03) s *= t / 0.03;                // tiny fade-in, no pop
+      }
+      v.setInt16(44 + n * 2, s * 32600, true);
+    }
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  const audio = new Audio(buildWav());
+  audio.preload = 'auto';
+  audio.volume = 1;
+
+  // ---------- fake logs ----------
+  const term = $('term');
+  const hex = n => Array.from({ length: n }, () => '0123456789ABCDEF'[Math.random() * 16 | 0]).join('');
+  const pick = a => a[Math.random() * a.length | 0];
+  const files = ['IMG_', 'VID_', 'Screenshot_', 'voice_', 'notes_', 'backup_'];
+  const exts = ['.HEIC', '.MOV', '.PNG', '.m4a', '.txt', '.db'];
+  const msgs = [
+    () => `[ERR] segfault at 0x${hex(12)} ip 0x${hex(8)}`,
+    () => `[!!] kernel_task: memory corruption in zone ${hex(4)}`,
+    () => `uploading /private/var/mobile/${pick(files)}${1000 + (Math.random() * 9000 | 0)}${pick(exts)} ... ${(Math.random() * 100 | 0)}%`,
+    () => `bypass firewall rule #${Math.random() * 999 | 0} ........ OK`,
+    () => `decrypt keychain block ${hex(16)} ... DONE`,
+    () => `[WARN] thermal sensor ${Math.random() * 9 | 0}: ${(60 + Math.random() * 40).toFixed(1)}°C`,
+    () => `inject payload -> pid ${Math.random() * 65535 | 0} [${hex(6)}]`,
+    () => `0x${hex(8)}  ${hex(8)} ${hex(8)} ${hex(8)} ${hex(8)}`,
+    () => `[FATAL] watchdog timeout, rebooting subsystem ${hex(3)}`,
+    () => `sync contacts ... ${Math.random() * 900 | 0} entries exported`,
+    () => `root@device:~# rm -rf /System/${pick(['Library', 'Frameworks', 'Caches'])}/${hex(6)}`,
+    () => `[ERR] I/O error, dev disk0s${Math.random() * 9 | 0}, sector ${Math.random() * 1e7 | 0}`,
+  ];
+  let lines = [];
+  function addLines(k) {
+    for (let i = 0; i < k; i++) {
+      const r = Math.random();
+      const cls = r < 0.08 ? 'b' : r < 0.25 ? 'd' : '';
+      lines.push(`<span class="${cls}">${msgs[Math.random() * msgs.length | 0]()}</span>`);
+    }
+    if (lines.length > 120) lines = lines.slice(-120);
+    term.innerHTML = lines.join('\n');
+  }
+
+  // ---------- sequence ----------
+  let raf = 0, timers = [], t0 = 0;
+  const clearAll = () => { cancelAnimationFrame(raf); timers.forEach(clearTimeout); timers = []; };
+
+  function runLogs() {
+    show('logs');
+    const logsEl = $('logs');
+    const tick = () => {
+      const t = (performance.now() - t0) / 1000;
+      const p = Math.min(1, t / LOG_TIME);
+      addLines(4 + Math.floor(p * 18));             // speeds up over time
+      $('fill').style.width = (p * 100).toFixed(1) + '%';
+      $('bartext').textContent =
+        p < 0.3 ? `ACCESSING DEVICE… ${(p * 100) | 0}%` :
+        p < 0.7 ? `EXTRACTING DATA… ${(p * 100) | 0}%` :
+                  `OVERRIDING SYSTEM… ${(p * 100) | 0}%`;
+      if (p > 0.5) logsEl.classList.add('shake');
+      if (p > 0.75) logsEl.classList.add('flick');
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  function runSiren() {
+    cancelAnimationFrame(raf);
+    $('logs').classList.remove('shake', 'flick');
+    show('siren');
+    try { navigator.vibrate && navigator.vibrate([400, 100, 400, 100, 400, 100, 400, 100, 400, 100, 400]); } catch (e) {}
+  }
+
+  function runRespring() {
+    audio.pause();                                  // abrupt cut, like a real respring
+    try { navigator.vibrate && navigator.vibrate(0); } catch (e) {}
+    show('respring');
+    spin.classList.remove('show');
+    timers.push(setTimeout(() => spin.classList.add('show'), 700));
+    timers.push(setTimeout(() => {
+      spin.classList.remove('show');
+      timers.push(setTimeout(() => {
+        show('end');
+        requestAnimationFrame(() => $('end').classList.add('fade'));
+      }, 600));
+    }, 700 + SPIN_TIME * 1000));
+  }
+
+  function start() {
+    clearAll();
+    $('end').classList.remove('fade');
+    lines = []; term.innerHTML = '';
+
+    // must happen inside the tap
+    try {
+      const el = document.documentElement;
+      const fs = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (fs) { const r = fs.call(el); if (r && r.catch) r.catch(() => {}); }
+    } catch (e) {}
+    audio.currentTime = 0;
+    const p = audio.play();
+    if (p && p.catch) p.catch(() => {});
+
+    t0 = performance.now();
+    runLogs();
+    timers.push(setTimeout(runSiren, LOG_TIME * 1000));
+    timers.push(setTimeout(runRespring, (LOG_TIME + SIREN_TIME) * 1000));
+  }
+
+  $('go').addEventListener('click', start);
+  $('again').addEventListener('click', start);
+})();
+</script>
+</body>
+</html>
